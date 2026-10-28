@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAVIXARA Testing — MFA Check</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:#080b14;color:#eef2ff}
+body{margin:0;padding:20px;max-width:680px;margin-inline:auto}
+main{background:#111827;border:1px solid #263247;border-radius:16px;padding:20px}
+h1{font-size:1.35rem;margin-top:0}p{line-height:1.5;color:#cbd5e1}
+label{display:block;margin:14px 0 6px;font-weight:600}
+input,button,textarea{box-sizing:border-box;width:100%;padding:12px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:#f8fafc;font:inherit}
+button{background:#315cf5;border:0;font-weight:700;margin-top:12px;cursor:pointer}
+button.secondary{background:#263247}
+button:disabled{opacity:.5}
+small{color:#aebbd0}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d18;padding:12px;border-radius:10px}
+#qr{background:#fff;color:#111;padding:10px;display:inline-block;max-width:100%;overflow:auto}
+#qr svg{max-width:100%;height:auto}
+.status{padding:10px;border-radius:8px;background:#0b1220;white-space:pre-wrap;overflow-wrap:anywhere}
+.warning{border-left:3px solid #f59e0b;padding-left:12px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>SAVIXARA Testing — Pemeriksaan MFA</h1>
+<p class="warning">Halaman uji khusus proyek testing. Pastikan alamat proyek adalah <b>bumoiebziefburtmisnn</b>. Jangan gunakan akun produksi. Jangan kirim kata sandi, OTP, QR, atau token kepada siapa pun.</p>
+<label for="email">Email akun testing</label>
+<input id="email" type="email" autocomplete="username" placeholder="email akun testing">
+<label for="password">Kata sandi akun testing</label>
+<input id="password" type="password" autocomplete="current-password" placeholder="Kata sandi">
+<button id="login">1. Login ke proyek testing</button>
+<div id="enrollArea" class="hidden">
+<button id="enroll">2. Daftarkan faktor TOTP</button>
+<div id="qrArea" class="hidden">
+<p>Tambahkan akun ini ke aplikasi autentikator. Pindai QR berikut. Jangan bagikan QR ini.</p>
+<div id="qr"></div>
+<label for="secret">Kunci manual (rahasia — jangan dibagikan)</label>
+<pre id="secret"></pre>
+<label for="otp">Kode 6 digit dari aplikasi autentikator</label>
+<input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000">
+<button id="verify">3. Verifikasi TOTP</button>
+</div>
+</div>
+<button id="aal" class="secondary">Periksa status AAL</button>
+<div id="result" class="status" role="status">Belum ada pemeriksaan.</div>
+<p><small>Sesi disimpan hanya di memori halaman ini dan hilang saat halaman ditutup/di-refresh. Halaman ini tidak mengirim hasil ke server lain.</small></p>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+(() => {
+  const PROJECT_URL = "https://bumoiebziefburtmisnn.supabase.co";
+  const PUBLISHABLE_KEY = "sb_publishable_2jHWucsQvNqEiLLk9Re3aA_n0JFVr42";
+  const client = window.supabase.createClient(PROJECT_URL, PUBLISHABLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+  const $ = id => document.getElementById(id);
+  let factorId = null;
+  let challengeId = null;
+  let totpSecret = null;
+  const say = msg => { $("result").textContent = msg; };
+  const errorText = e => e?.message || String(e);
+  $("login").addEventListener("click", async () => {
+    $("login").disabled = true;
+    try {
+      const { data, error } = await client.auth.signInWithPassword({
+        email: $("email").value.trim(),
+        password: $("password").value
+      });
+      if (error) throw error;
+      if (!data.session) throw new Error("Login tidak menghasilkan sesi.");
+      $("enrollArea").classList.remove("hidden");
+      say("Login berhasil ke proyek testing. Klik “Daftarkan faktor TOTP” untuk melanjutkan.");
+    } catch (e) { say("Login gagal: " + errorText(e)); }
+    finally { $("login").disabled = false; }
+  });
+  $("enroll").addEventListener("click", async () => {
+    $("enroll").disabled = true;
+    try {
+      const { data, error } = await client.auth.mfa.enroll({
+        factorType: "totp",
+        friendlyName: "SAVIXARA Testing Authenticator"
+      });
+      if (error) throw error;
+      factorId = data.id;
+      totpSecret = data.totp.secret;
+      $("qr").innerHTML = data.totp.qr_code;
+      $("secret").textContent = totpSecret;
+      $("qrArea").classList.remove("hidden");
+      say("Faktor TOTP dibuat di proyek testing, tetapi belum terverifikasi. Pindai QR dengan aplikasi autentikator, lalu masukkan kode 6 digit.");
+    } catch (e) { say("Pendaftaran TOTP gagal: " + errorText(e)); }
+    finally { $("enroll").disabled = false; }
+  });
+  $("verify").addEventListener("click", async () => {
+    $("verify").disabled = true;
+    try {
+      const code = $("otp").value.trim();
+      if (!factorId || !/^\d{6}$/.test(code)) throw new Error("Masukkan kode 6 digit yang sedang berlaku.");
+      const ch = await client.auth.mfa.challenge({ factorId });
+      if (ch.error) throw ch.error;
+      challengeId = ch.data.id;
+      const v = await client.auth.mfa.verify({ factorId, challengeId, code });
+      if (v.error) throw v.error;
+      const { data, error } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (error) throw error;
+      say("Verifikasi TOTP berhasil.\nCurrent AAL: " + data.currentLevel + "\nNext AAL: " + data.nextLevel +
+        "\n\nJika Current AAL adalah aal2, sesi ini sudah mencapai AAL2. Sesi ini hanya berada di memori halaman.");
+    } catch (e) { say("Verifikasi gagal: " + errorText(e)); }
+    finally { $("verify").disabled = false; }
+  });
+  $("aal").addEventListener("click", async () => {
+    try {
+      const { data, error } = await client.auth.mfa.getAuthenticatorAssuranceLevel();
+      if (error) throw error;
+      say("Current AAL: " + data.currentLevel + "\nNext AAL: " + data.nextLevel);
+    } catch (e) { say("Tidak bisa memeriksa AAL: " + errorText(e)); }
+  });
+})();
+</script>
+</body>
+  </html>
+  
