@@ -43,7 +43,7 @@ pre,.status{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d18;paddi
 "use strict";
 const URL="https://bumoiebziefburtmisnn.supabase.co";
 const KEY="sb_publishable_2jHWucsQvNqEiLLk9Re3aA_n0JFVr42";
-const FN=URL+"/functions/v1/melostore-sync-pricelist-audit-candidate?auth_check_only=1";
+const FN=URL+"/functions/v1/melostore-auth-gate-audit-v2";
 const sb=window.supabase.createClient(URL,KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
 const $=id=>document.getElementById(id), say=s=>{$("result").textContent=s}, err=e=>e?.message||String(e);
 let factorId=null,newFactorId=null;
